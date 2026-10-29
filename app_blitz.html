@@ -45,7 +45,19 @@
   dialog { border: 1px solid var(--line); border-radius: 14px; padding: 0; width: min(460px, 94vw);
            background: var(--surface); color: var(--text); }
   dialog::backdrop { background: rgba(0,0,0,.45); }
-  .m { padding: 18px; display: grid; gap: 14px; }
+  .m { padding: 18px; display: grid; gap: 14px; position: relative; }
+  .overlay { position: absolute; inset: 0; z-index: 5; display: none; flex-direction: column; align-items: center;
+             justify-content: center; gap: 10px; text-align: center; padding: 20px; border-radius: 14px;
+             background: rgba(255,255,255,.9); background: color-mix(in srgb, var(--surface) 90%, transparent); }
+  dialog.busy .overlay { display: flex; }
+  .overlay p { margin: 0; font-weight: 600; }
+  .overlay small { color: var(--muted); }
+  .spinner { width: 38px; height: 38px; border: 4px solid var(--line); border-top-color: var(--agora);
+             border-radius: 50%; animation: spin .8s linear infinite; }
+  .mini { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--line); border-top-color: var(--agora);
+          border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -2px; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .ok { color: var(--pendente); font-size: .85rem; font-weight: 600; min-height: 1.1em; }
   .m h2 { margin: 0; font-size: 1.1rem; }
   .item { display: grid; grid-template-columns: 6px 1fr auto; gap: 10px; align-items: center;
           border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
@@ -87,6 +99,11 @@
 
 <dialog id="dlg">
   <div class="m">
+    <div class="overlay" role="status" aria-live="polite">
+      <div class="spinner"></div>
+      <p id="busyMsg">Salvando…</p>
+      <small>Aguarde, isso pode levar alguns segundos.</small>
+    </div>
     <h2 id="dlgTitle"></h2>
     <div id="list"></div>
     <div class="form-title">Nova BLITZ nesta data</div>
@@ -100,6 +117,7 @@
       </label>
     </div>
     <label>Seu nome (vendedor) <input id="vendedor" autocomplete="name"></label>
+    <div class="ok" id="okMsg" role="status"></div>
     <div id="formErr" role="alert"></div>
     <div class="actions">
       <button id="close">Fechar</button>
@@ -128,10 +146,14 @@ function colorOf(i) {
   return i.radio === 'AGORA FM' ? 'var(--agora)' : 'var(--pan)';
 }
 
-function setStatus(msg, err) { const s = $('status'); s.textContent = msg; s.className = err ? 'err' : ''; }
+function setStatus(msg, err, loading) {
+  const s = $('status'); s.textContent = ''; s.className = err ? 'err' : '';
+  if (loading) { const i = document.createElement('i'); i.className = 'mini'; s.appendChild(i); }
+  s.append(msg);
+}
 
 async function load() {
-  setStatus('Carregando…');
+  setStatus('Carregando…', false, true);
   try {
     const r = await fetch(`${API_URL}?token=${encodeURIComponent(TOKEN)}`);
     const j = await r.json();
@@ -205,12 +227,12 @@ function renderList() {
     const btns = document.createElement('div'); btns.className = 'btns';
     if (i.status !== 'Confirmada') {
       const ok = document.createElement('button'); ok.textContent = 'Confirmar';
-      ok.onclick = () => act(() => send({ action: 'status', id: i.id, status: 'Confirmada' }));
+      ok.onclick = () => act(() => send({ action: 'status', id: i.id, status: 'Confirmada' }), 'Confirmando BLITZ…');
       btns.appendChild(ok);
     }
     else {
       const undo = document.createElement('button'); undo.textContent = 'Desfazer confirmação';
-      undo.onclick = () => { if (confirm(`Voltar a BLITZ de ${i.cliente} para "Reservada"?`)) act(() => send({ action: 'status', id: i.id, status: 'Reservada' })); };
+      undo.onclick = () => { if (confirm(`Voltar a BLITZ de ${i.cliente} para "Reservada"?`)) act(() => send({ action: 'status', id: i.id, status: 'Reservada' }), 'Desfazendo confirmação…'); };
       btns.appendChild(undo);
     }
     const del = document.createElement('button'); del.className = 'danger'; del.textContent = 'Excluir';
@@ -218,30 +240,44 @@ function renderList() {
       const msg = i.status === 'Confirmada'
         ? `Esta BLITZ já está CONFIRMADA.\nExcluir definitivamente a BLITZ de ${i.cliente} (${i.radio})?`
         : `Excluir a reserva de ${i.cliente} (${i.radio})?`;
-      if (confirm(msg)) act(() => send({ action: 'delete', id: i.id }));
+      if (confirm(msg)) act(() => send({ action: 'delete', id: i.id }), 'Excluindo BLITZ…');
     };
     btns.appendChild(del);
     row.append(bar, info, btns); box.appendChild(row);
   });
 }
 
-async function act(fn) {
-  $('formErr').textContent = '';
-  setStatus('Salvando…');
-  try { await fn(); await load(); renderList(); }
-  catch (e) { $('formErr').textContent = e.message; setStatus('', false); }
+let busy = false;
+async function act(fn, msg = 'Salvando…') {
+  if (busy) return; // evita clique duplo
+  busy = true;
+  $('formErr').textContent = ''; $('okMsg').textContent = '';
+  $('busyMsg').textContent = msg;
+  $('dlg').classList.add('busy');
+  setStatus(msg, false, true);
+  try {
+    await fn(); await load(); renderList();
+    $('okMsg').textContent = '✓ Concluído com sucesso';
+    setTimeout(() => { $('okMsg').textContent = ''; }, 2500);
+  } catch (e) {
+    $('formErr').textContent = e.message; setStatus('');
+  } finally {
+    busy = false; $('dlg').classList.remove('busy');
+  }
 }
 
 $('save').onclick = () => {
+  if (!$('cliente').value.trim()) { $('formErr').textContent = 'Informe o nome do cliente.'; $('cliente').focus(); return; }
   const vendedor = $('vendedor').value.trim();
   localStorage.setItem('vendedor', vendedor);
   act(async () => {
     await send({ action: 'add', data: selected, cliente: $('cliente').value,
                  radio: $('radio').value, status: $('st').value, vendedor });
     $('cliente').value = '';
-  });
+  }, 'Salvando BLITZ…');
 };
-$('close').onclick = () => $('dlg').close();
+$('close').onclick = () => { if (!busy) $('dlg').close(); };
+$('dlg').addEventListener('cancel', e => { if (busy) e.preventDefault(); });
 $('prev').onclick = () => { view.setMonth(view.getMonth() - 1); render(); };
 $('next').onclick = () => { view.setMonth(view.getMonth() + 1); render(); };
 $('today').onclick = () => { view = new Date(); view.setDate(1); render(); };
