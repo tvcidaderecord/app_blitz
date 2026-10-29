@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calendário BLITZ</title>
+<style>
+  :root {
+    --bg: #f6f5f8; --surface: #fff; --text: #1d1b22; --muted: #6b6775; --line: #e3e0ea;
+    --agora: #7b2cbf; --pan: #d62828; --pendente: #2e9e4f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #141217; --surface: #1e1b24; --text: #f1eff5; --muted: #a29eae; --line: #332f3c; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+         background: var(--bg); color: var(--text); }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 16px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 1.4rem; margin: 0; }
+  .nav { display: flex; align-items: center; gap: 8px; }
+  .nav strong { min-width: 150px; text-align: center; text-transform: capitalize; }
+  button { font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--line);
+           background: var(--surface); color: var(--text); padding: 8px 12px; }
+  button:hover { border-color: var(--muted); }
+  button:focus-visible, input:focus-visible, select:focus-visible, .day:focus-visible { outline: 2px solid var(--agora); outline-offset: 2px; }
+  button.primary { background: var(--agora); border-color: var(--agora); color: #fff; }
+  button.danger { color: var(--pan); }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; margin: 14px 0; font-size: .9rem; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  .agora { background: var(--agora); } .pan { background: var(--pan); } .pend { background: var(--pendente); }
+  .grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+  .dow { text-align: center; font-size: .8rem; color: var(--muted); padding: 4px 0; }
+  .day { height: 78px; min-width: 0; overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+         padding: 4px; display: flex; flex-direction: column; gap: 3px; cursor: pointer; text-align: left; font: inherit; color: inherit; }
+  .day:hover { border-color: var(--muted); }
+  .day.blank { background: transparent; border: 0; cursor: default; }
+  .day.today .n { background: var(--text); color: var(--bg); }
+  .n { font-size: .8rem; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; }
+  .chip { height: 14px; border-radius: 4px; flex: none; }
+  #status { margin: 10px 0; font-size: .9rem; color: var(--muted); min-height: 1.2em; }
+  #status.err { color: var(--pan); }
+
+  dialog { border: 1px solid var(--line); border-radius: 14px; padding: 0; width: min(460px, 94vw);
+           background: var(--surface); color: var(--text); }
+  dialog::backdrop { background: rgba(0,0,0,.45); }
+  .m { padding: 18px; display: grid; gap: 14px; position: relative; }
+  .overlay { position: absolute; inset: 0; z-index: 5; display: none; flex-direction: column; align-items: center;
+             justify-content: center; gap: 10px; text-align: center; padding: 20px; border-radius: 14px;
+             background: rgba(255,255,255,.9); background: color-mix(in srgb, var(--surface) 90%, transparent); }
+  dialog.busy .overlay { display: flex; }
+  .overlay p { margin: 0; font-weight: 600; }
+  .overlay small { color: var(--muted); }
+  .spinner { width: 38px; height: 38px; border: 4px solid var(--line); border-top-color: var(--agora);
+             border-radius: 50%; animation: spin .8s linear infinite; }
+  .mini { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--line); border-top-color: var(--agora);
+          border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -2px; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .ok { color: var(--pendente); font-size: .85rem; font-weight: 600; min-height: 1.1em; }
+  .m h2 { margin: 0; font-size: 1.1rem; }
+  .item { display: grid; grid-template-columns: 6px 1fr auto; gap: 10px; align-items: center;
+          border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+  .item .bar { align-self: stretch; border-radius: 3px; }
+  .item small { color: var(--muted); display: block; }
+  .item .btns { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .item .btns button { padding: 5px 8px; font-size: .8rem; }
+  label { display: grid; gap: 4px; font-size: .85rem; color: var(--muted); }
+  input, select { font: inherit; padding: 9px 10px; border-radius: 8px; border: 1px solid var(--line);
+                  background: var(--bg); color: var(--text); width: 100%; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .form-title { font-weight: 600; font-size: .95rem; }
+  #formErr { color: var(--pan); font-size: .85rem; min-height: 1.1em; }
+  @media (max-width: 560px) { .day { height: 66px; } .chip { height: 11px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Calendário BLITZ</h1>
+    <div class="nav">
+      <button id="prev" aria-label="Mês anterior">‹</button>
+      <strong id="title"></strong>
+      <button id="next" aria-label="Próximo mês">›</button>
+      <button id="today">Hoje</button>
+    </div>
+  </header>
+
+  <div class="legend">
+    <span><i class="dot agora"></i> AGORA FM confirmada</span>
+    <span><i class="dot pan"></i> JOVEM PAN confirmada</span>
+    <span><i class="dot pend"></i> Reservada (aguardando confirmação)</span>
+  </div>
+  <div id="status"></div>
+  <div class="grid" id="dows"></div>
+  <div class="grid" id="grid"></div>
+</div>
+
+<dialog id="dlg">
+  <div class="m">
+    <div class="overlay" role="status" aria-live="polite">
+      <div class="spinner"></div>
+      <p id="busyMsg">Salvando…</p>
+      <small>Aguarde, isso pode levar alguns segundos.</small>
+    </div>
+    <h2 id="dlgTitle"></h2>
+    <div id="list"></div>
+    <div class="form-title">Nova BLITZ nesta data</div>
+    <label>Cliente <input id="cliente" autocomplete="off" placeholder="Nome do cliente"></label>
+    <div class="row">
+      <label>Rádio
+        <select id="radio"><option>AGORA FM</option><option>JOVEM PAN</option></select>
+      </label>
+      <label>Situação
+        <select id="st"><option>Reservada</option><option>Confirmada</option></select>
+      </label>
+    </div>
+    <label>Seu nome (vendedor) <input id="vendedor" autocomplete="name"></label>
+    <div class="ok" id="okMsg" role="status"></div>
+    <div id="formErr" role="alert"></div>
+    <div class="actions">
+      <button id="close">Fechar</button>
+      <button id="save" class="primary">Salvar</button>
+    </div>
+  </div>
+</dialog>
+
+<script>
+// ====== CONFIGURAÇÃO ======
+const API_URL = 'https://script.google.com/macros/s/AKfycbz1J5i0RoJaZr27YhXJD3XVFLD0qrZDzN6Jb_6Uiaw58-l_obnuN4GzW8PMQeW_cyU7ew/exec';
+const TOKEN   = '@#Agora4545'; // igual ao TOKEN do Code.gs
+// ==========================
+
+const MESES = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+const DOW = ['dom','seg','ter','qua','qui','sex','sáb'];
+const $ = id => document.getElementById(id);
+let items = [], view = new Date(), selected = null;
+view.setDate(1);
+
+const pad = n => String(n).padStart(2, '0');
+const iso = (y, m, d) => `${y}-${pad(m + 1)}-${pad(d)}`;
+
+function colorOf(i) {
+  if (i.status !== 'Confirmada') return 'var(--pendente)';
+  return i.radio === 'AGORA FM' ? 'var(--agora)' : 'var(--pan)';
+}
+
+function setStatus(msg, err, loading) {
+  const s = $('status'); s.textContent = ''; s.className = err ? 'err' : '';
+  if (loading) { const i = document.createElement('i'); i.className = 'mini'; s.appendChild(i); }
+  s.append(msg);
+}
+
+async function load() {
+  setStatus('Carregando…', false, true);
+  try {
+    const r = await fetch(`${API_URL}?token=${encodeURIComponent(TOKEN)}`);
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error);
+    items = j.items; setStatus('');
+  } catch (e) { setStatus('Não foi possível carregar: ' + e.message, true); }
+  render();
+}
+
+async function send(payload) {
+  // text/plain evita o preflight de CORS no Apps Script
+  const r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ token: TOKEN, ...payload }) });
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error);
+}
+
+function render() {
+  const y = view.getFullYear(), m = view.getMonth();
+  $('title').textContent = `${MESES[m]} ${y}`;
+  const grid = $('grid'); grid.innerHTML = '';
+  const first = new Date(y, m, 1).getDay(), days = new Date(y, m + 1, 0).getDate();
+  const now = new Date(), todayIso = iso(now.getFullYear(), now.getMonth(), now.getDate());
+
+  for (let i = 0; i < first; i++) { const b = document.createElement('div'); b.className = 'day blank'; grid.appendChild(b); }
+  for (let d = 1; d <= days; d++) {
+    const key = iso(y, m, d);
+    const cell = document.createElement('button');
+    cell.className = 'day' + (key === todayIso ? ' today' : '');
+    cell.setAttribute('aria-label', `${d} de ${MESES[m]}`);
+    const n = document.createElement('span'); n.className = 'n'; n.textContent = d; cell.appendChild(n);
+    const doDia = items.filter(i => i.data === key);
+    if (doDia.length) cell.setAttribute('aria-label', `${d} de ${MESES[m]}: ` + doDia.map(i => `${i.radio} ${i.status}`).join(', '));
+    doDia.forEach(i => {
+      const c = document.createElement('div');
+      c.className = 'chip'; c.style.background = colorOf(i);
+      c.title = `${i.radio} — ${i.cliente} (${i.status})`;
+      cell.appendChild(c);
+    });
+    cell.onclick = () => openDay(key);
+    grid.appendChild(cell);
+  }
+}
+
+function openDay(key) {
+  selected = key;
+  const [y, m, d] = key.split('-').map(Number);
+  $('dlgTitle').textContent = `${d} de ${MESES[m - 1]} de ${y}`;
+  $('cliente').value = ''; $('formErr').textContent = '';
+  $('vendedor').value = localStorage.getItem('vendedor') || '';
+  renderList();
+  $('dlg').showModal();
+  $('cliente').focus();
+}
+
+function renderList() {
+  const box = $('list'); box.innerHTML = '';
+  const day = items.filter(i => i.data === selected);
+  if (!day.length) {
+    const p = document.createElement('div'); p.style.color = 'var(--muted)';
+    p.textContent = 'Data livre. Nenhuma BLITZ lançada.'; box.appendChild(p); return;
+  }
+  box.style.display = 'grid'; box.style.gap = '8px';
+  day.forEach(i => {
+    const row = document.createElement('div'); row.className = 'item';
+    const bar = document.createElement('div'); bar.className = 'bar'; bar.style.background = colorOf(i);
+    const info = document.createElement('div');
+    const t = document.createElement('strong'); t.textContent = i.cliente;
+    const s = document.createElement('small');
+    s.textContent = `${i.radio} · ${i.status}${i.vendedor ? ' · ' + i.vendedor : ''}`;
+    info.append(t, s);
+    const btns = document.createElement('div'); btns.className = 'btns';
+    if (i.status !== 'Confirmada') {
+      const ok = document.createElement('button'); ok.textContent = 'Confirmar';
+      ok.onclick = () => act(() => send({ action: 'status', id: i.id, status: 'Confirmada' }), 'Confirmando BLITZ…');
+      btns.appendChild(ok);
+    }
+    else {
+      const undo = document.createElement('button'); undo.textContent = 'Desfazer confirmação';
+      undo.onclick = () => { if (confirm(`Voltar a BLITZ de ${i.cliente} para "Reservada"?`)) act(() => send({ action: 'status', id: i.id, status: 'Reservada' }), 'Desfazendo confirmação…'); };
+      btns.appendChild(undo);
+    }
+    const del = document.createElement('button'); del.className = 'danger'; del.textContent = 'Excluir';
+    del.onclick = () => {
+      const msg = i.status === 'Confirmada'
+        ? `Esta BLITZ já está CONFIRMADA.\nExcluir definitivamente a BLITZ de ${i.cliente} (${i.radio})?`
+        : `Excluir a reserva de ${i.cliente} (${i.radio})?`;
+      if (confirm(msg)) act(() => send({ action: 'delete', id: i.id }), 'Excluindo BLITZ…');
+    };
+    btns.appendChild(del);
+    row.append(bar, info, btns); box.appendChild(row);
+  });
+}
+
+let busy = false;
+async function act(fn, msg = 'Salvando…') {
+  if (busy) return; // evita clique duplo
+  busy = true;
+  $('formErr').textContent = ''; $('okMsg').textContent = '';
+  $('busyMsg').textContent = msg;
+  $('dlg').classList.add('busy');
+  setStatus(msg, false, true);
+  try {
+    await fn(); await load(); renderList();
+    $('okMsg').textContent = '✓ Concluído com sucesso';
+    setTimeout(() => { $('okMsg').textContent = ''; }, 2500);
+  } catch (e) {
+    $('formErr').textContent = e.message; setStatus('');
+  } finally {
+    busy = false; $('dlg').classList.remove('busy');
+  }
+}
+
+$('save').onclick = () => {
+  if (!$('cliente').value.trim()) { $('formErr').textContent = 'Informe o nome do cliente.'; $('cliente').focus(); return; }
+  const vendedor = $('vendedor').value.trim();
+  localStorage.setItem('vendedor', vendedor);
+  act(async () => {
+    await send({ action: 'add', data: selected, cliente: $('cliente').value,
+                 radio: $('radio').value, status: $('st').value, vendedor });
+    $('cliente').value = '';
+  }, 'Salvando BLITZ…');
+};
+$('close').onclick = () => { if (!busy) $('dlg').close(); };
+$('dlg').addEventListener('cancel', e => { if (busy) e.preventDefault(); });
+$('prev').onclick = () => { view.setMonth(view.getMonth() - 1); render(); };
+$('next').onclick = () => { view.setMonth(view.getMonth() + 1); render(); };
+$('today').onclick = () => { view = new Date(); view.setDate(1); render(); };
+
+$('dows').innerHTML = DOW.map(d => `<div class="dow">${d}</div>`).join('');
+render(); load();
+</script>
+</body>
+</html>
