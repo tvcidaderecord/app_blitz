@@ -30,16 +30,15 @@
   .legend span { display: inline-flex; align-items: center; gap: 6px; }
   .dot { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
   .agora { background: var(--agora); } .pan { background: var(--pan); } .pend { background: var(--pendente); }
-  .grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
   .dow { text-align: center; font-size: .8rem; color: var(--muted); padding: 4px 0; }
-  .day { min-height: 92px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  .day { height: 78px; min-width: 0; overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
          padding: 4px; display: flex; flex-direction: column; gap: 3px; cursor: pointer; text-align: left; font: inherit; color: inherit; }
   .day:hover { border-color: var(--muted); }
   .day.blank { background: transparent; border: 0; cursor: default; }
   .day.today .n { background: var(--text); color: var(--bg); }
   .n { font-size: .8rem; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; }
-  .chip { color: #fff; font-size: .68rem; line-height: 1.2; padding: 3px 5px; border-radius: 4px;
-          overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chip { height: 14px; border-radius: 4px; flex: none; }
   #status { margin: 10px 0; font-size: .9rem; color: var(--muted); min-height: 1.2em; }
   #status.err { color: var(--pan); }
 
@@ -61,7 +60,7 @@
   .actions { display: flex; justify-content: flex-end; gap: 8px; }
   .form-title { font-weight: 600; font-size: .95rem; }
   #formErr { color: var(--pan); font-size: .85rem; min-height: 1.1em; }
-  @media (max-width: 560px) { .day { min-height: 70px; } .chip { font-size: .6rem; padding: 2px 3px; } }
+  @media (max-width: 560px) { .day { height: 66px; } .chip { height: 11px; } }
 </style>
 </head>
 <body>
@@ -163,10 +162,11 @@ function render() {
     cell.className = 'day' + (key === todayIso ? ' today' : '');
     cell.setAttribute('aria-label', `${d} de ${MESES[m]}`);
     const n = document.createElement('span'); n.className = 'n'; n.textContent = d; cell.appendChild(n);
-    items.filter(i => i.data === key).forEach(i => {
+    const doDia = items.filter(i => i.data === key);
+    if (doDia.length) cell.setAttribute('aria-label', `${d} de ${MESES[m]}: ` + doDia.map(i => `${i.radio} ${i.status}`).join(', '));
+    doDia.forEach(i => {
       const c = document.createElement('div');
       c.className = 'chip'; c.style.background = colorOf(i);
-      c.textContent = `${i.radio === 'AGORA FM' ? 'AGORA' : 'PAN'} · ${i.cliente}`;
       c.title = `${i.radio} — ${i.cliente} (${i.status})`;
       cell.appendChild(c);
     });
